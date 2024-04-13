@@ -66,6 +66,9 @@ def get_option():
     argparser.add_argument('-aapdb', type=str,
                             default='None',
                             help='Specify input AA PDB file name.')
+    argparser.add_argument('-noenm', type=str,
+                            default='None',
+                            help='List of residues to not include in the elastic network.')
     return argparser.parse_args()
 
 def get_option_script(argv):
@@ -95,10 +98,13 @@ def get_option_script(argv):
     argparser.add_argument('-aapdb', type=str,
                             default='None',
                             help='Specify input AA PDB file name.')
+    argparser.add_argument('-noenm', type=str,
+                            default='None',
+                            help='List of residues to not include in the elastic network.')
     return argparser.parse_args(argv)
 
 ncomp = 7
-ncomp_pdb = 15
+ncomp_pdb = 16
 (    PDB_RECNAME,
     PDB_INDEX,
     PDB_ATMNAME,
@@ -113,7 +119,8 @@ ncomp_pdb = 15
     PDB_OCCUP,
     PDB_TFACT,
     PDB_SEGID,
-    PDB_ELESYM 
+    PDB_ELESYM,
+    PDB_BENM
 ) = range(ncomp_pdb)
 (    ATMNAME,
     RESNAME,
@@ -400,13 +407,16 @@ helix  = ['H','G','I']
 sheet  = ['B','E','T']
 loop = ['S','C']
 
-def read_pdb(cgpdb, pdb_list, cryst, ters):
+def read_pdb(cgpdb, pdb_list, cryst, ters, noenm):
     natom = 0
     try:
         f = open(cgpdb,"r")
     except:
         print ("ERROR: FILE",cgpdb,"IS NOT FOUND")
         sys.exit(0)
+    if (noenm != 'None'):
+        noenm = list(map(int, noenm.split(",")))
+        print("List of residues to not include in the Elastic Network: {0}".format(noenm))
     line = f.readline()
     while line:
         recname = line[0:6].strip()
@@ -428,8 +438,14 @@ def read_pdb(cgpdb, pdb_list, cryst, ters):
             Tfact = line[60:66]
             segid = line[72:76]
             elesym = line[76:78].split("\n")[0]
+            # Iterate through list of residues that should not be included in the elastic network
+            bENM = True
+            if (noenm != 'None'):
+                for i in noenm:
+                    if (int(resid) == i):
+                        bENM = False
             #charge = line[78:80]
-            pdb_list.append([recname,index,atmname,indicat,resname,chainid,resid,code,posX,posY,posZ,occup,Tfact,segid,elesym])
+            pdb_list.append([recname,index,atmname,indicat,resname,chainid,resid,code,posX,posY,posZ,occup,Tfact,segid,elesym,bENM])
         elif recname == "TER":
             ters.append(float(resid))
         line = f.readline()
@@ -445,7 +461,7 @@ def open_file(outfile):
     return fout
 
 class gen_top_ENM:
-    def __init__(self, cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb):
+    def __init__(self, cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb, noenm):
         self.cgpdb  = cgpdb
         self.outfile = outfile
         self.kENM    = kENM
@@ -469,7 +485,8 @@ class gen_top_ENM:
         self.ters      = []
         self.structure = []
         cryst    = []
-        self.natom = read_pdb(cgpdb, self.pdb_data, cryst, self.ters)
+        self.bENM = []
+        self.natom = read_pdb(cgpdb, self.pdb_data, cryst, self.ters, noenm)
         self.ftop = open_file(outfile)
         self._charge_mod()
         self._set_array()
@@ -585,12 +602,13 @@ class gen_top_ENM:
         for i in range(self.nat):
             name_i    = self.name[i]
             resname_i = self.resname[i]
+            resid_i = int(self.pdb_data[i][PDB_RESID])
             I = i + 1
             if name_i in charge:
                 thischrg = charge[name_i]
             else :
                 thischrg = 0.0
-        
+
             wtype = this_type[name_i]
             mass  = bd_mass[name_i]
 
@@ -600,81 +618,81 @@ class gen_top_ENM:
                     thischrg = charge["GBT"]
                     if resname_i == "ALA":
                         if self.pspica and thischrg > 0:
-                            print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                %(I,resname_i,"ABTP","ABTP",mass,thischrg), file=ftop)
+                            print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                %(I,resname_i,"ABTP","ABTP",mass,thischrg,resid_i), file=ftop)
                         else:
                             if structure[resid[i]] in helix:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"ABT","ABT",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"ABT","ABT",mass,thischrg,resid_i), file=ftop)
                             elif structure[resid[i]] in sheet:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"ABTS","ABTS",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"ABTS","ABTS",mass,thischrg,resid_i), file=ftop)
                             else:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"ABTL","ABTL",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"ABTL","ABTL",mass,thischrg,resid_i), file=ftop)
                     else :
                         if self.pspica and thischrg > 0:
-                            print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                %(I,resname_i,"GBTP","GBTP",mass,thischrg), file=ftop)
+                            print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                %(I,resname_i,"GBTP","GBTP",mass,thischrg,resid_i), file=ftop)
                         else:
                             if structure[resid[i]] in helix:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"GBT","GBT",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"GBT","GBT",mass,thischrg,resid_i), file=ftop)
                             elif structure[resid[i]] in sheet:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"GBTS","GBTS",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"GBTS","GBTS",mass,thischrg,resid_i), file=ftop)
                             else:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"GBTL","GBTL",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"GBTL","GBTL",mass,thischrg,resid_i), file=ftop)
                 elif self.bbndx[self.nbb-1] == i:
                     # backbone C-terminal
                     thischrg = -1*charge["GBT"]
                     if resname_i == "ALA":
                         if self.pspica and thischrg < 0:
-                            print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                %(I,resname_i,"ABTN","ABTN",mass,thischrg), file=ftop)
+                            print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                %(I,resname_i,"ABTN","ABTN",mass,thischrg,resid_i), file=ftop)
                         else:
                             if structure[resid[i]] in helix:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"ABT","ABT",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"ABT","ABT",mass,thischrg,resid_i), file=ftop)
                             elif structure[resid[i]] in sheet:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"ABTS","ABTS",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"ABTS","ABTS",mass,thischrg,resid_i), file=ftop)
                             else:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"ABTL","ABTL",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"ABTL","ABTL",mass,thischrg,resid_i), file=ftop)
                     else :
                         if self.pspica and thischrg < 0:
-                            print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                %(I,resname_i,"GBTN","GBTN",mass,thischrg), file=ftop)
+                            print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                %(I,resname_i,"GBTN","GBTN",mass,thischrg,resid_i), file=ftop)
                         else:
                             if structure[resid[i]] in helix:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"GBT","GBT",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"GBT","GBT",mass,thischrg,resid_i), file=ftop)
                             elif structure[resid[i]] in sheet:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"GBTS","GBTS",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"GBTS","GBTS",mass,thischrg,resid_i), file=ftop)
                             else:
-                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                                    %(I,resname_i,"GBTL","GBTL",mass,thischrg), file=ftop)
+                                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                                    %(I,resname_i,"GBTL","GBTL",mass,thischrg,resid_i), file=ftop)
                 elif wtype in ['GBM','GBB','ABB']:
                     if structure[resid[i]] in helix:
-                        print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                            %(I,resname_i,name_i,wtype,mass,thischrg), file=ftop)
+                        print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                            %(I,resname_i,name_i,wtype,mass,thischrg,resid_i), file=ftop)
                     elif structure[resid[i]] in sheet:
                         wtype = wtype + "S"
-                        print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                            %(I,resname_i,wtype,wtype,mass,thischrg), file=ftop)
+                        print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                            %(I,resname_i,wtype,wtype,mass,thischrg,resid_i), file=ftop)
                     else:
                         wtype = wtype + "L"
-                        print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                            %(I,resname_i,wtype,wtype,mass,thischrg), file=ftop)
+                        print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                            %(I,resname_i,wtype,wtype,mass,thischrg,resid_i), file=ftop)
                 else :
-                    print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                        %(I,resname_i,name_i,wtype,mass,thischrg), file=ftop)
+                    print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                        %(I,resname_i,name_i,wtype,mass,thischrg,resid_i), file=ftop)
             else :
-                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P" \
-                    %(I,resname_i,name_i,wtype,mass,thischrg), file=ftop)
+                print ("atom %5d %5s %5s %5s %8.4f   %8.4f  P %5d" \
+                    %(I,resname_i,name_i,wtype,mass,thischrg,resid_i), file=ftop)
             
         print ("", file=ftop)
 
@@ -706,7 +724,7 @@ class gen_top_ENM:
                     dy = self.coord[i1][1] - self.coord[i2][1]
                     dz = self.coord[i1][2] - self.coord[i2][2]
                     dr = math.sqrt(dx*dx + dy*dy + dz*dz)
-                    if dr < MAXdr and dr > MINdr and self.resid[i2] - self.resid[i1] >= 3:
+                    if dr < MAXdr and dr > MINdr and self.resid[i2] - self.resid[i1] >= 3 and self.pdb_data[i1][PDB_BENM] == True and self.pdb_data[i2][PDB_BENM] == True:
                         print ("bondparam %5d %5d   %f %f # %s-%s" \
                             %(I1, I2, kENM, dr, self.name[i1], self.name[i2]), file=ftop)
         print ("", file=ftop)
@@ -879,6 +897,6 @@ if __name__ == "__main__":
     v1      = args.v1
     dssp    = args.dssp
     aapdb   = args.aapdb
-
-    gen = gen_top_ENM(cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb)
+    noenm   = args.noenm
+    gen = gen_top_ENM(cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb, noenm)
     gen.run()

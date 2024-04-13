@@ -44,7 +44,8 @@ def main():
         v1      = args.v1
         dssp    = args.dssp
         aapdb   = args.aapdb
-        gen     = gen_top_ENM.gen_top_ENM(cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb)
+        noenm   = args.noenm
+        gen     = gen_top_ENM.gen_top_ENM(cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb, noenm)
         gen.run()
     elif args.tool_name == "Go":
         args    = gen_top_Go.get_option_script(sub)
@@ -56,7 +57,8 @@ def main():
         v1      = args.v1
         dssp    = args.dssp
         aapdb   = args.aapdb
-        gen     = gen_top_Go.gen_top_Go(cgpdb, outfile, eps, MAXdr, pspica, v1, dssp, aapdb)
+        nogo    = args.nogo
+        gen     = gen_top_Go.gen_top_Go(cgpdb, outfile, eps, MAXdr, pspica, v1, dssp, aapdb, nogo)
         gen.run()
     elif args.tool_name == "json2top":
         args   = json_to_top.get_option_script(sub)
@@ -130,7 +132,8 @@ def main():
         press = args.P
         pspica = args.pspica
         em = args.em
-        gen_gmxin = gen_gmx_input.gen_gmx_inp(conf, ndxf, outf, temp, press, pspica, em)
+        go = args.go
+        gen_gmxin = gen_gmx_input.gen_gmx_inp(conf, ndxf, outf, temp, press, pspica, em, go)
         gen_gmxin.run()
     else:
         sys.exit(f"ERROR: invalid tool name {args.tool_name}")

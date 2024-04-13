@@ -25,6 +25,8 @@ def get_option():
                             help='generate GROMACS input for pSPICA FF (default: for SPICA FF).')
     argparser.add_argument('-em', action='store_true',
                             help='generate EM input for pSPICA FF (default: off).')
+    argparser.add_argument('-go', action='store_true',
+                            help='generate 12-6 tablep.xvg file to use with Go model (default: off).')
     return argparser.parse_args()
 
 def get_option_script(argv):
@@ -52,10 +54,12 @@ def get_option_script(argv):
                             help='generate GROMACS input for pSPICA FF (default: for SPICA FF).')
     argparser.add_argument('-em', action='store_true',
                             help='generate EM input for pSPICA FF (default: off).')
+    argparser.add_argument('-go', action='store_true',
+                            help='generate 12-6 tablep.xvg file to use with Go model (default: off).')
     return argparser.parse_args(argv)
 
 class gen_gmx_inp:
-    def __init__(self, conf, ndxf, outf, temp, press, pspica, em):
+    def __init__(self, conf, ndxf, outf, temp, press, pspica, em, go):
         self.conf = conf    
         self.ndxf = ndxf    
         self.outf = outf
@@ -63,9 +67,10 @@ class gen_gmx_inp:
         self.press = press
         self.pspica = pspica
         self.em = em
+        self.go = go
 
     def gen_table(self, n, m, tname):
-       rcut = 2.5
+       rcut = 3.5
        dr = 0.002
        nbin = int(rcut/dr) + 1
        with open(tname, "w") as f:
@@ -103,6 +108,8 @@ class gen_gmx_inp:
         grps = self.energy_grps()
         lgrps = []
         self.gen_table(9, 6, "table.xvg")
+        if self.go:
+            self.gen_table(12, 6, "tablep.xvg")
         for x, y in list(itertools.combinations_with_replacement(grps, 2)):
             if (x == "PSOLW" or y == "PSOLW") or (x == "SOLW" or y == "SOLW"):
                 lgrps.append(sorted([x, y]))
@@ -140,17 +147,17 @@ class gen_gmx_inp:
         else:
             print("; GROMACS input for SPICA FF", file=f)
         print(file=f)
-        print(f"title                = NPT simulation", file=f)
+        print(f"title                = SPICA simulation", file=f)
         print(f"pbc                  = xyz", file=f)
         print(f"integrator           = md", file=f)
-        print(f"dt                   = 0.01", file=f)
-        print(f"nsteps               = 10000000", file=f)
-        print(f"nstxtcout            = 10000", file=f)
-        print(f"nstxout              = 0", file=f)
-        print(f"nstvout              = 0", file=f)
+        print(f"dt                   = 0.02", file=f)
+        print(f"nsteps               = 5000000", file=f)
+        print(f"nstxtcout            = 5000", file=f)
+        print(f"nstxout              = 500000", file=f)
+        print(f"nstvout              = 500000", file=f)
         print(f"nstfout              = 0", file=f)
-        print(f"nstlog               = 1000", file=f)
-        print(f"nstenergy            = 100", file=f)
+        print(f"nstlog               = 5000", file=f)
+        print(f"nstenergy            = 5000", file=f)
         print(f"comm_mode            = linear", file=f)
         print(file=f)
         print(f"vdw-type             = user", file=f)
@@ -171,12 +178,12 @@ class gen_gmx_inp:
         else:
             print(f"fourierspacing       = 0.5", file=f)
         print(file=f)
-        print(f"Tcoupl               = Nose-Hoover", file=f)
+        print(f"Tcoupl               = V-rescale", file=f)
         print(f"tau_t                = 1.0", file=f)
         print(f"tc-grps              = system", file=f)
         print(f"ref_t                = {self.temp}", file=f)
         print(file=f)
-        print(f"Pcoupl               = Parrinello-Rahman", file=f)
+        print(f"Pcoupl               = C-rescale", file=f)
         boxl = self.read_box()
         if len(set(boxl)) == 1:
             cpl = "isotropic"
@@ -196,7 +203,11 @@ class gen_gmx_inp:
             print(f"tau_p                = 5.0", file=f)
             print(f"ref_p                = {self.press} {self.press} {self.press} {self.press} {self.press} {self.press}", file=f)
             print(f"compressibility      = 4.5e-5  4.5e-5  4.5e-5  0  0  0", file=f)
-        print(f"refcoord_scaling     = com", file=f)
+        #print(f"refcoord_scaling     = com", file=f)
+        print(file=f)
+        print(f"gen-vel = yes", file=f)
+        print(f"gen-temp = {self.temp}", file=f)
+        print(f"gen-seed = -1", file=f)
         print(file=f)
         if self.pspica:
             print(f"constraint_algorithm = LINCS", file=f)
@@ -229,7 +240,7 @@ class gen_gmx_inp:
         print(f"pbc                  = xyz", file=f)
         print(f"integrator           = steep", file=f)
         print(f"emtol                = 1000", file=f)
-        print(f"nsteps               = 50000", file=f)
+        print(f"nsteps               = 1000", file=f)
         print(file=f)
         print(f"vdw-type             = user", file=f)
         print(f"energygrps           = {self.gen_enegrps()}", file=f)
@@ -259,5 +270,6 @@ if __name__ == "__main__":
     press = args.P
     pspica = args.pspica
     em = args.em
-    obj = gen_lmp_inp(conf, ndxf, outf, temp, press, pspica, em)
+    go = args.go
+    obj = gen_lmp_inp(conf, ndxf, outf, temp, press, pspica, em, go)
     obj.run()
