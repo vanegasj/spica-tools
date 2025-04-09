@@ -45,7 +45,8 @@ def main():
         dssp    = args.dssp
         aapdb   = args.aapdb
         noenm   = args.noenm
-        gen     = gen_top_ENM.gen_top_ENM(cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb, noenm)
+        algo    = args.algo
+        gen     = gen_top_ENM.gen_top_ENM(cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb, noenm, algo)
         gen.run()
     elif args.tool_name == "Go":
         args    = gen_top_Go.get_option_script(sub)
@@ -58,7 +59,8 @@ def main():
         dssp    = args.dssp
         aapdb   = args.aapdb
         nogo    = args.nogo
-        gen     = gen_top_Go.gen_top_Go(cgpdb, outfile, eps, MAXdr, pspica, v1, dssp, aapdb, nogo)
+        algo    = args.algo
+        gen     = gen_top_Go.gen_top_Go(cgpdb, outfile, eps, MAXdr, pspica, v1, dssp, aapdb, nogo, algo)
         gen.run()
     elif args.tool_name == "json2top":
         args   = json_to_top.get_option_script(sub)

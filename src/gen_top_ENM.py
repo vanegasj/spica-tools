@@ -69,6 +69,9 @@ def get_option():
     argparser.add_argument('-noenm', type=str,
                             default='None',
                             help='List of residues to not include in the elastic network.')
+    argparser.add_argument('-algo', type=str,
+                            default='orig',
+                            help='Algorithm to determine which residues to include in the ENM. Options: orig - use the original SPICA algorith (includes some tertiary elements in addition to secondary struture), or vanegas - use new algorithm (includes secondary structure elements only).')
     return argparser.parse_args()
 
 def get_option_script(argv):
@@ -101,6 +104,9 @@ def get_option_script(argv):
     argparser.add_argument('-noenm', type=str,
                             default='None',
                             help='List of residues to not include in the elastic network.')
+    argparser.add_argument('-algo', type=str,
+                            default='orig',
+                            help='Algorithm to determine which residues to include in the ENM. Options: orig - use the original SPICA algorith (includes some tertiary elements in addition to secondary struture), or vanegas - use new algorithm (includes secondary structure elements only).')
     return argparser.parse_args(argv)
 
 ncomp = 7
@@ -461,7 +467,7 @@ def open_file(outfile):
     return fout
 
 class gen_top_ENM:
-    def __init__(self, cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb, noenm):
+    def __init__(self, cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb, noenm, algo):
         self.cgpdb  = cgpdb
         self.outfile = outfile
         self.kENM    = kENM
@@ -484,6 +490,7 @@ class gen_top_ENM:
         self.pdb_data  = []
         self.ters      = []
         self.structure = []
+        self.ss        = []
         cryst    = []
         self.bENM = []
         self.natom = read_pdb(cgpdb, self.pdb_data, cryst, self.ters, noenm)
@@ -494,6 +501,8 @@ class gen_top_ENM:
             self.structure = ['H']*(self.resid[-1]+1)
         else:
             self.read_dssp()
+        self.read_dssp2() #needed for secondary structure dependend ENM
+        self.algo = algo
 
     def _charge_mod(self):
         if self.pspica:
@@ -591,6 +600,30 @@ class gen_top_ENM:
             self.structure[-1] = 'H'
         elif self.structure[-2] in sheet:
             self.structure[-1] = 'E'
+
+    def read_dssp2(self):
+        aapdb = self.aapdb
+        if aapdb == 'None':
+            sys.exit("ERROR: Specify AA pdb file name by -aapdb option")
+        dssp = self.dssp
+        cmdis = shutil.which(dssp)
+        resid = self.resid
+        if cmdis == None:
+            sys.exit("ERROR: DSSP binary was not found")
+        cmd = f"{dssp} {aapdb} dssp.out"
+        subprocess.call(cmd.split())
+        f = open('dssp.out','r')
+        lines = f.readlines()
+        f.close()
+        for line in lines[28:]:
+            if line[13] == '!':
+                continue
+            elif line[16] == ' ':
+                self.ss.append('C')
+            else:
+                self.ss.append(line[16])
+        if resid[-1] != len(self.ss) - 1:
+            self.ss.append('C')
 
     ######################################################
     #########        PRINT OUT TOP FILE      #############
@@ -714,9 +747,23 @@ class gen_top_ENM:
         print ("Force constant ... ", kENM, "kcal/A^2")
         print ("**************************************")
         print ()
+        if self.algo == 'orig':
+            print("Using original SPICA elastic network model that includes some tertiary structural elements")
+            print()
+        elif self.algo == 'vanegas':
+            print("Using Vanegas modified elastic network model that includes only secondary structural elements")
+            print()
+        else:
+            print("Unrecognized value for option -algo. Valid options are 'orig' or 'vanegas'")
+            print()
+            sys.exit()
         nat = self.nat
-        for i1 in range(nat): 
+        for i1 in range(nat):
             I1 = i1 + 1
+            b1 = 1
+            b2 = 1
+            b3 = 1
+            b4 = 1
             for i2 in range(i1 + 1,nat):
                 I2 = i2 + 1
                 if self.bBackbone[i1] == 1 and self.bBackbone[i2] == 1:
@@ -725,8 +772,31 @@ class gen_top_ENM:
                     dz = self.coord[i1][2] - self.coord[i2][2]
                     dr = math.sqrt(dx*dx + dy*dy + dz*dz)
                     if dr < MAXdr and dr > MINdr and self.resid[i2] - self.resid[i1] >= 3 and self.pdb_data[i1][PDB_BENM] == True and self.pdb_data[i2][PDB_BENM] == True:
-                        print ("bondparam %5d %5d   %f %f # %s-%s" \
-                            %(I1, I2, kENM, dr, self.name[i1], self.name[i2]), file=ftop)
+                        if self.algo == 'orig':
+                            print ("bondparam %5d %5d   %f %f # %s-%s"%(I1, I2, kENM, dr, self.name[i1], self.name[i2]), file=ftop)
+                        elif self.algo == 'vanegas':
+                            if ((self.ss[self.resid[i1]] in helix or self.ss[self.resid[i2]] in helix) and self.resid[i2] - self.resid[i1] < 8) or \
+                                (self.ss[self.resid[i1]] not in helix and self.ss[self.resid[i2]] not in helix):
+                                print ("bondparam %5d %5d   %f %f # %s-%s"%(I1, I2, kENM, dr, self.name[i1], self.name[i2]), file=ftop)
+
+                            #Hbreak = (self.ss[self.resid[i1]] not in helix or self.ss[self.resid[i2]] not in helix)
+                            #if (Hbreak):
+                            #    if (self.resid[i2] - self.resid[i1] == 1):
+                            #        b1 = 0
+                            #    elif (self.resid[i2] - self.resid[i1] == 2):
+                            #        b2 = 0
+                            #    elif (self.resid[i2] - self.resid[i1] == 3):
+                            #        b3 = 0
+                            #    elif (self.resid[i2] - self.resid[i1] == 4):
+                            #        b4 = 0
+                            #Hcont = b1*b2*b3*b4
+                            #print(Hcont)
+                            #Hcont = 1
+                            #if dr < MAXdr and dr > MINdr and self.resid[i2] - self.resid[i1] >= 3 and self.pdb_data[i1][PDB_BENM] == True and self.pdb_data[i2][PDB_BENM] == True:
+                            #if dr < MAXdr and dr > MINdr and self.resid[i2] - self.resid[i1] >= 3 and self.pdb_data[i1][PDB_BENM] == True and self.pdb_data[i2][PDB_BENM] == True:
+                            #    if ((self.ss[self.resid[i1]] in helix and self.ss[self.resid[i2]] in helix) and self.resid[i2] - self.resid[i1] < 5 and Hcont == 1) or \
+                            #        (self.ss[self.resid[i1]] not in helix and self.ss[self.resid[i2]] not in helix):
+                            #        print ("bondparam %5d %5d   %f %f # %s-%s"%(I1, I2, kENM, dr, self.name[i1], self.name[i2]), file=ftop)
         print ("", file=ftop)
 
     #######################################
@@ -898,5 +968,6 @@ if __name__ == "__main__":
     dssp    = args.dssp
     aapdb   = args.aapdb
     noenm   = args.noenm
-    gen = gen_top_ENM(cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb, noenm)
+    algo    = args.algo
+    gen = gen_top_ENM(cgpdb, outfile, kENM, MAXdr, pspica, v1, dssp, aapdb, noenm, algo)
     gen.run()
